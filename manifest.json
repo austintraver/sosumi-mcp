@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "sosumi-mcp",
   "display_name": "Sosumi MCP",
-  "version": "1.0.6",
+  "version": "1.1.0",
   "description": "A local stdio MCP server that renders public Apple Developer documentation as Markdown.",
   "author": {
     "name": "Austin Traver"
@@ -45,7 +45,7 @@
   "compatibility": {
     "platforms": ["darwin"],
     "runtimes": {
-      "node": ">=20.18.1"
+      "node": ">=26.0.0"
     }
   }
 }

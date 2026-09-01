@@ -9,13 +9,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: pnpm/setup@v2
         with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          runtime: node@26
+          cache: true
+          require-lockfile: true
       - run: pnpm run check:ci
       - run: pnpm test
       - run: pnpm run pack:mcpb

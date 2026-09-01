@@ -15,7 +15,7 @@ import { fetchVideoTranscriptMarkdown } from "./video/index.js"
 
 export const MCP_SERVER_INFO = {
   name: "sosumi",
-  version: "1.0.6",
+  version: "1.1.0",
 } as const
 
 export interface ToolMeta {

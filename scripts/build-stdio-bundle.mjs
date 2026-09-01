@@ -19,7 +19,7 @@ const result = await build({
   metafile: true,
   platform: "node",
   sourcemap: false,
-  target: ["node20"],
+  target: ["node26"],
   treeShaking: true,
 })
 
