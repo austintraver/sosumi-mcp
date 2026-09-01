@@ -1,4 +1,4 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
+import { McpServer } from "@modelcontextprotocol/server"
 import { z } from "zod"
 
 import { fetchExternalDocumentationMarkdown } from "./external/index.js"
@@ -22,8 +22,8 @@ export interface ToolMeta {
   name: string
   title: string
   description: string
-  inputSchema: z.ZodRawShape
-  outputSchema?: z.ZodRawShape
+  inputSchema: z.ZodObject
+  outputSchema?: z.ZodObject
   annotations: {
     readOnlyHint: boolean
     destructiveHint: boolean
@@ -53,13 +53,13 @@ export const TOOL_DEFINITIONS = {
     name: "searchAppleDocumentation",
     title: "Search Apple Documentation",
     description: "Search Apple Developer documentation and return structured results",
-    inputSchema: {
+    inputSchema: z.object({
       query: z.string().describe("Search query for Apple documentation"),
-    },
-    outputSchema: {
+    }),
+    outputSchema: z.object({
       query: z.string().describe("The search query that was executed"),
       results: z.array(searchResultSchema).describe("Array of search results"),
-    },
+    }),
     annotations: readOnlyAnnotations,
   },
   fetchAppleDocumentation: {
@@ -67,13 +67,13 @@ export const TOOL_DEFINITIONS = {
     title: "Fetch Apple Documentation",
     description:
       "Fetch Apple Developer documentation and Human Interface Guidelines by path and return as markdown",
-    inputSchema: {
+    inputSchema: z.object({
       path: z
         .string()
         .describe(
           "Documentation path (e.g., '/documentation/swift', '/documentation/swiftui/view', '/design/human-interface-guidelines/foundations/color')",
         ),
-    },
+    }),
     annotations: readOnlyAnnotations,
   },
   fetchExternalDocumentation: {
@@ -81,26 +81,26 @@ export const TOOL_DEFINITIONS = {
     title: "Fetch External Documentation",
     description:
       "Fetch external Swift-DocC documentation by absolute https URL and return as markdown",
-    inputSchema: {
+    inputSchema: z.object({
       url: z
         .string()
         .describe(
           "External Swift-DocC URL (e.g., 'https://apple.github.io/swift-argument-parser/documentation/argumentparser')",
         ),
-    },
+    }),
     annotations: readOnlyAnnotations,
   },
   fetchAppleVideoTranscript: {
     name: "fetchAppleVideoTranscript",
     title: "Fetch Apple Video Transcript",
     description: "Fetch transcript for an Apple Developer video path and return as markdown",
-    inputSchema: {
+    inputSchema: z.object({
       path: z
         .string()
         .describe(
           "Apple video path (e.g., '/videos/play/wwdc2021/10133' or '/videos/play/meet-with-apple/208')",
         ),
-    },
+    }),
     annotations: readOnlyAnnotations,
   },
 } satisfies Record<string, ToolMeta>

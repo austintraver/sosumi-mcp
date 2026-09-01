@@ -6,7 +6,7 @@ const renderHIGTableOfContents = vi.fn()
 const fetchVideoTranscriptMarkdown = vi.fn()
 const searchAppleDeveloperDocs = vi.fn()
 
-vi.mock("@modelcontextprotocol/sdk/server/mcp.js", () => {
+vi.mock("@modelcontextprotocol/server", () => {
   class McpServerMock {
     registerTool(
       name: string,

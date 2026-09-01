@@ -1,19 +1,18 @@
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
+import { serveStdio } from "@modelcontextprotocol/server/stdio"
 
 import { createMcpServer } from "./lib/mcp.js"
 
-async function run(): Promise<void> {
-  const server = createMcpServer()
-  const transport = new StdioServerTransport()
-
-  transport.onerror = (error) => {
-    console.error("Sosumi MCP stdio transport error:", error)
-  }
-
-  await server.connect(transport)
+function run(): void {
+  serveStdio(() => createMcpServer(), {
+    onerror: (error) => {
+      console.error("Sosumi MCP stdio transport error:", error)
+    },
+  })
 }
 
-run().catch((error: unknown) => {
+try {
+  run()
+} catch (error: unknown) {
   console.error("Sosumi MCP failed to start:", error)
   process.exitCode = 1
-})
+}
