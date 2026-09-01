@@ -11,8 +11,9 @@
       "biome.json",
       "package.json",
       "tsconfig.json",
-      "wrangler.jsonc",
+      "tsconfig.build.json",
       "vitest.config.ts",
+      "scripts/**/*",
       "src/**/*",
       "tests/**/*"
     ]

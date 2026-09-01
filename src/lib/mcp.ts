@@ -1,25 +1,22 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { z } from "zod"
 
-import type { ExternalPolicyEnv } from "./external"
-import { fetchExternalDocumentationMarkdown } from "./external"
-import { fetchHIGPageData, renderHIGFromJSON } from "./hig"
-import { fetchJSONData, renderFromJSON } from "./reference"
-import { searchAppleDeveloperDocs } from "./search"
-import { generateAppleDocUrl, normalizeDocumentationPath } from "./url"
-import { fetchVideoTranscriptMarkdown } from "./video"
+import { fetchExternalDocumentationMarkdown } from "./external/index.js"
+import {
+  fetchHIGPageData,
+  fetchHIGTableOfContents,
+  renderHIGFromJSON,
+  renderHIGTableOfContents,
+} from "./hig/index.js"
+import { fetchJSONData, renderFromJSON } from "./reference/index.js"
+import { searchAppleDeveloperDocs } from "./search.js"
+import { generateAppleDocUrl, normalizeDocumentationPath } from "./url.js"
+import { fetchVideoTranscriptMarkdown } from "./video/index.js"
 
 export const MCP_SERVER_INFO = {
-  name: "sosumi.ai",
-  version: "1.0.0",
+  name: "sosumi",
+  version: "1.0.6",
 } as const
-
-export interface ToolHttpBinding {
-  path?: string
-  pathFrom?: string
-  pathPrefix?: string
-  query?: Record<string, string>
-}
 
 export interface ToolMeta {
   name: string
@@ -33,7 +30,6 @@ export interface ToolMeta {
     idempotentHint: boolean
     openWorldHint: boolean
   }
-  http: ToolHttpBinding
 }
 
 const searchResultSchema = z.object({
@@ -65,7 +61,6 @@ export const TOOL_DEFINITIONS = {
       results: z.array(searchResultSchema).describe("Array of search results"),
     },
     annotations: readOnlyAnnotations,
-    http: { path: "/search", query: { q: "query" } },
   },
   fetchAppleDocumentation: {
     name: "fetchAppleDocumentation",
@@ -80,7 +75,6 @@ export const TOOL_DEFINITIONS = {
         ),
     },
     annotations: readOnlyAnnotations,
-    http: { pathFrom: "path" },
   },
   fetchExternalDocumentation: {
     name: "fetchExternalDocumentation",
@@ -95,7 +89,6 @@ export const TOOL_DEFINITIONS = {
         ),
     },
     annotations: readOnlyAnnotations,
-    http: { pathFrom: "url", pathPrefix: "/external/" },
   },
   fetchAppleVideoTranscript: {
     name: "fetchAppleVideoTranscript",
@@ -109,11 +102,10 @@ export const TOOL_DEFINITIONS = {
         ),
     },
     annotations: readOnlyAnnotations,
-    http: { pathFrom: "path" },
   },
 } satisfies Record<string, ToolMeta>
 
-export function createMcpServer(externalPolicyEnv: ExternalPolicyEnv = {}) {
+export function createMcpServer() {
   const server = new McpServer(MCP_SERVER_INFO)
 
   const search = TOOL_DEFINITIONS.searchAppleDocumentation
@@ -181,6 +173,7 @@ export function createMcpServer(externalPolicyEnv: ExternalPolicyEnv = {}) {
         }
 
         return {
+          isError: true,
           content: [
             {
               type: "text" as const,
@@ -204,12 +197,8 @@ export function createMcpServer(externalPolicyEnv: ExternalPolicyEnv = {}) {
     },
     async ({ path }) => {
       try {
-        if (path.includes("design/human-interface-guidelines")) {
-          const higPath = path.replace(/^\/?(design\/human-interface-guidelines\/)/, "")
-          const sourceUrl = `https://developer.apple.com/design/human-interface-guidelines/${higPath}`
-
-          const jsonData = await fetchHIGPageData(higPath)
-          const markdown = await renderHIGFromJSON(jsonData, sourceUrl)
+        if (isHumanInterfaceGuidelinesPath(path)) {
+          const markdown = await fetchHumanInterfaceGuidelines(path)
 
           if (!markdown || markdown.trim().length < 100) {
             throw new Error("Insufficient content in HIG page")
@@ -247,6 +236,7 @@ export function createMcpServer(externalPolicyEnv: ExternalPolicyEnv = {}) {
         const errorMessage = error instanceof Error ? error.message : "Unknown error"
 
         return {
+          isError: true,
           content: [
             {
               type: "text" as const,
@@ -269,7 +259,7 @@ export function createMcpServer(externalPolicyEnv: ExternalPolicyEnv = {}) {
     },
     async ({ url }) => {
       try {
-        const markdown = await fetchExternalDocumentationMarkdown(url, externalPolicyEnv)
+        const markdown = await fetchExternalDocumentationMarkdown(url)
 
         if (!markdown || markdown.trim().length < 100) {
           throw new Error("Insufficient content in external documentation")
@@ -287,6 +277,7 @@ export function createMcpServer(externalPolicyEnv: ExternalPolicyEnv = {}) {
         const errorMessage = error instanceof Error ? error.message : "Unknown error"
 
         return {
+          isError: true,
           content: [
             {
               type: "text" as const,
@@ -337,6 +328,7 @@ export function createMcpServer(externalPolicyEnv: ExternalPolicyEnv = {}) {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "Unknown error"
         return {
+          isError: true,
           content: [
             {
               type: "text" as const,
@@ -349,4 +341,25 @@ export function createMcpServer(externalPolicyEnv: ExternalPolicyEnv = {}) {
   )
 
   return server
+}
+
+const HIG_PATH_PREFIX = "design/human-interface-guidelines"
+const HIG_SOURCE_URL = "https://developer.apple.com/design/human-interface-guidelines"
+
+function isHumanInterfaceGuidelinesPath(path: string): boolean {
+  const normalizedPath = path.replace(/^\/+|\/+$/g, "")
+  return normalizedPath === HIG_PATH_PREFIX || normalizedPath.startsWith(`${HIG_PATH_PREFIX}/`)
+}
+
+async function fetchHumanInterfaceGuidelines(path: string): Promise<string> {
+  const normalizedPath = path.replace(/^\/+|\/+$/g, "")
+  const higPath = normalizedPath.slice(HIG_PATH_PREFIX.length).replace(/^\//, "")
+
+  if (!higPath) {
+    const tableOfContents = await fetchHIGTableOfContents()
+    return renderHIGTableOfContents(tableOfContents)
+  }
+
+  const jsonData = await fetchHIGPageData(higPath)
+  return renderHIGFromJSON(jsonData, `${HIG_SOURCE_URL}/${higPath}`)
 }

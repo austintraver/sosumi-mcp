@@ -1,4 +1,4 @@
-import { getRandomUserAgent } from "./fetch"
+import { getRandomUserAgent } from "./fetch.js"
 
 export interface SearchResult {
   title: string
@@ -14,15 +14,10 @@ export interface SearchResponse {
   results: SearchResult[]
 }
 
-// Apple's current search backend, discovered from
-// https://developer.apple.com/search/scripts/search.js (May 2026)
-//
-// Historical context:
-//   - The legacy /search/ HTML scraper broke when Apple switched to a JS-rendered SPA
-//   - PR #54 upstream (NSHipster/sosumi.ai) targeted /search/services/search.php with
-//     NDJSON-style streamed events; that endpoint is now also gone (404)
-//   - The current backend is a plain JSON POST API on Apple's MSC infrastructure
-const APPLE_SEARCH_SERVICE_URL = "https://devintserv.msc.sbz.apple.com/api/v1/search"
+// Apple's search-page script currently posts JSONL requests to this endpoint.
+// `quickSearch` events contain a small direct result set; `search` events carry
+// incremental edits to a JSON result snapshot.
+const APPLE_SEARCH_SERVICE_URL = "https://devintserv.msc.sbz.apple.com/api/v1/query"
 const DEFAULT_TARGET_RESULT_LOCALE = "en"
 const TARGET_RESULT_LOCALE_BY_BASE_NAME = new Map([
   ["en", "en"],
@@ -49,8 +44,7 @@ async function searchAppleDeveloperDocsViaService(query: string): Promise<Search
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Accept: "application/json",
-      // The MSC backend requires a browser-style Origin/Referer pair to accept the request.
+      Accept: "application/jsonl",
       Origin: "https://developer.apple.com",
       Referer: "https://developer.apple.com/search/",
       "User-Agent": getRandomUserAgent(),
@@ -58,6 +52,7 @@ async function searchAppleDeveloperDocsViaService(query: string): Promise<Search
     body: JSON.stringify({
       text: query,
       targetResultLocale: resolveTargetResultLocale(),
+      includedResponses: ["quickSearch", "search"],
     }),
   })
 
@@ -65,18 +60,93 @@ async function searchAppleDeveloperDocsViaService(query: string): Promise<Search
     throw new Error(`Search request failed: ${response.status}`)
   }
 
-  const data = await readSearchResponseJson(response)
-  const rawResults = Array.isArray(data.results) ? (data.results as unknown[]) : []
-  return extractSearchResults(rawResults)
+  return readSearchResponseJsonl(response)
 }
 
-async function readSearchResponseJson(response: Response): Promise<JsonRecord> {
-  try {
-    const data = await response.json()
-    return isJsonRecord(data) ? data : {}
-  } catch {
-    throw new Error("Search response was not valid JSON")
+async function readSearchResponseJsonl(response: Response): Promise<SearchResult[]> {
+  const text = await response.text()
+  let quickResults: SearchResult[] = []
+  let latestSearchResults: SearchResult[] = []
+  let searchBuffer = ""
+
+  for (const line of text.split(/\r?\n/)) {
+    const event = parseJsonRecord(line)
+    if (!event) {
+      continue
+    }
+
+    if (event.kind === "quickSearch") {
+      quickResults = extractSearchResults(extractEventResults(event.response))
+      continue
+    }
+
+    if (event.kind !== "search") {
+      continue
+    }
+
+    const directResults = extractEventResults(event.response)
+    if (directResults.length > 0) {
+      latestSearchResults = extractSearchResults(directResults)
+    }
+
+    const diff = isJsonRecord(event.diff) ? event.diff : null
+    if (!diff) {
+      continue
+    }
+
+    const removeLast = nonNegativeInteger(diff.removeLast)
+    if (removeLast !== null) {
+      searchBuffer = searchBuffer.slice(0, Math.max(0, searchBuffer.length - removeLast))
+    }
+
+    if (typeof diff.append === "string") {
+      searchBuffer += diff.append
+    }
+
+    const snapshot = parseJsonRecord(searchBuffer)
+    if (snapshot) {
+      latestSearchResults = extractSearchResults(extractEventResults(snapshot))
+    }
   }
+
+  // Apple's full search has the larger result set and its relevance ordering.
+  // Keep it first, then retain a quick-search hit only when it is absent there.
+  return mergeSearchResults(latestSearchResults, quickResults)
+}
+
+function extractEventResults(value: unknown): unknown[] {
+  return isJsonRecord(value) && Array.isArray(value.results) ? value.results : []
+}
+
+function parseJsonRecord(value: string): JsonRecord | null {
+  if (!value.trim()) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(value)
+    return isJsonRecord(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function nonNegativeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null
+}
+
+function mergeSearchResults(
+  primary: SearchResult[],
+  supplementary: SearchResult[],
+): SearchResult[] {
+  const seenUrls = new Set<string>()
+  return [...primary, ...supplementary].filter((result) => {
+    if (seenUrls.has(result.url)) {
+      return false
+    }
+    seenUrls.add(result.url)
+    return true
+  })
 }
 
 function extractSearchResults(items: unknown[]): SearchResult[] {
@@ -91,82 +161,114 @@ function normalizeSearchResult(item: unknown): SearchResult | null {
     return null
   }
 
-  const documentation = extractMetadataRecord(item.documentation)
+  const candidate = isJsonRecord(item.value) ? item.value : item
+  const currentMetadata = isJsonRecord(candidate.metadata) ? candidate.metadata : null
+  if (currentMetadata) {
+    return normalizeCurrentSearchResult(currentMetadata, stringValue(candidate.origin))
+  }
+
+  const documentation = extractMetadataRecord(candidate.documentation)
   if (documentation) {
-    const title = stringValue(documentation.title)
-    const url = stringValue(documentation.permalink)
-    if (!title || !url) {
-      return null
-    }
-
-    return {
-      title,
-      url,
-      description: stringValue(documentation.description) ?? "",
-      breadcrumbs: splitHierarchy(stringValue(documentation.hierarchy)),
-      tags: compactStrings([stringValue(documentation.kind)]),
-      type: "documentation",
-    }
+    return normalizeDocumentationResult(documentation)
   }
 
-  const developer = extractMetadataRecord(item.developer)
+  const developer = extractMetadataRecord(candidate.developer)
   if (developer) {
-    const title = firstString(developer.titles)
-    const url = firstString(developer.permalinks)
-    if (!title || !url) {
-      return null
-    }
-
-    return {
-      title,
-      url,
-      description: firstString(developer.descriptions) ?? "",
-      breadcrumbs: compactStrings([firstString(developer.projectNames)]),
-      tags: compactStrings([
-        firstString(developer.itemTypes),
-        firstString(developer.deliveryLanguageCodes),
-      ]),
-      type: (firstString(developer.itemTypes) ?? "developer").toLowerCase(),
-    }
+    return normalizeDeveloperResult(developer)
   }
 
-  const devsite = extractMetadataRecord(item.devsite)
+  const devsite = extractMetadataRecord(candidate.devsite)
   if (devsite) {
-    const title = stringValue(devsite.title)
-    const url = stringValue(devsite.sourceURL)
-    if (!title || !url) {
-      return null
-    }
-
-    return {
-      title,
-      url,
-      description: stringValue(devsite.description) ?? "",
-      breadcrumbs: [],
-      tags: [],
-      type: "general",
-    }
+    return normalizeGeneralResult(devsite)
   }
 
-  const swiftdocs = extractMetadataRecord(item.swiftdocs)
+  const swiftdocs = extractMetadataRecord(candidate.swiftdocs)
   if (swiftdocs) {
-    const title = stringValue(swiftdocs.title)
-    const url = stringValue(swiftdocs.sourceURL)
-    if (!title || !url) {
-      return null
-    }
-
-    return {
-      title,
-      url,
-      description: stringValue(swiftdocs.description) ?? "",
-      breadcrumbs: [],
-      tags: [],
-      type: "general",
-    }
+    return normalizeGeneralResult(swiftdocs)
   }
 
   return null
+}
+
+function normalizeCurrentSearchResult(
+  metadata: JsonRecord,
+  origin: string | null,
+): SearchResult | null {
+  const title = stringValue(metadata.title)
+  const url = stringValue(metadata.permalink) ?? stringValue(metadata.sourceURL)
+  if (!title || !url) {
+    return null
+  }
+
+  const kind = stringValue(metadata.kind)
+  const metadataKind = stringValue(metadata.metadataKind)
+  const type =
+    metadataKind === "documentation" || origin === "documentation"
+      ? "documentation"
+      : (kind ?? origin ?? "general").toLowerCase()
+
+  return {
+    title,
+    url,
+    description: stringValue(metadata.description) ?? "",
+    breadcrumbs: splitHierarchy(stringValue(metadata.hierarchy)),
+    tags: compactStrings([kind]),
+    type,
+  }
+}
+
+function normalizeDocumentationResult(metadata: JsonRecord): SearchResult | null {
+  const title = stringValue(metadata.title)
+  const url = stringValue(metadata.permalink)
+  if (!title || !url) {
+    return null
+  }
+
+  return {
+    title,
+    url,
+    description: stringValue(metadata.description) ?? "",
+    breadcrumbs: splitHierarchy(stringValue(metadata.hierarchy)),
+    tags: compactStrings([stringValue(metadata.kind)]),
+    type: "documentation",
+  }
+}
+
+function normalizeDeveloperResult(metadata: JsonRecord): SearchResult | null {
+  const title = firstString(metadata.titles)
+  const url = firstString(metadata.permalinks)
+  if (!title || !url) {
+    return null
+  }
+
+  return {
+    title,
+    url,
+    description: firstString(metadata.descriptions) ?? "",
+    breadcrumbs: compactStrings([firstString(metadata.projectNames)]),
+    tags: compactStrings([
+      firstString(metadata.itemTypes),
+      firstString(metadata.deliveryLanguageCodes),
+    ]),
+    type: (firstString(metadata.itemTypes) ?? "developer").toLowerCase(),
+  }
+}
+
+function normalizeGeneralResult(metadata: JsonRecord): SearchResult | null {
+  const title = stringValue(metadata.title)
+  const url = stringValue(metadata.sourceURL)
+  if (!title || !url) {
+    return null
+  }
+
+  return {
+    title,
+    url,
+    description: stringValue(metadata.description) ?? "",
+    breadcrumbs: [],
+    tags: [],
+    type: "general",
+  }
 }
 
 function extractMetadataRecord(container: unknown): JsonRecord | null {

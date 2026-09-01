@@ -367,12 +367,8 @@ describe("Integration Tests with Mocked Apple API", () => {
 
     global.fetch = vi.fn().mockResolvedValue(new Response("Internal Server Error", { status: 500 }))
 
-    await expect(fetchHIGTableOfContents()).rejects.toThrow(
-      "Failed to fetch HIG ToC: 500 Internal Server Error",
-    )
-    await expect(fetchHIGPageData("test")).rejects.toThrow(
-      "Failed to fetch HIG page: 500 Internal Server Error",
-    )
+    await expect(fetchHIGTableOfContents()).rejects.toThrow("Failed to fetch HIG ToC: 500")
+    await expect(fetchHIGPageData("test")).rejects.toThrow("Failed to fetch HIG page: 500")
   })
 
   it("should handle malformed JSON responses", async () => {
@@ -403,22 +399,12 @@ describe("Integration Tests with Mocked Apple API", () => {
   })
 
   it("should fetch and render external Swift-DocC JSON", async () => {
-    global.fetch = vi
-      .fn()
-      // robots.txt allows access
-      .mockResolvedValueOnce(
-        new Response("User-agent: *\nAllow: /", {
-          status: 200,
-          headers: { "Content-Type": "text/plain" },
-        }),
-      )
-      // external JSON response
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify(arrayData), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      )
+    global.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(arrayData), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )
 
     const jsonData = await fetchExternalDocCJSON(
       new URL("https://reference-ios.daily.co/documentation/daily"),

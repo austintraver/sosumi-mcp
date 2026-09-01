@@ -2,9 +2,9 @@
  * Apple Developer Reference documentation fetching functionality
  */
 
-import { getRandomUserAgent, NotFoundError } from "../fetch"
-import { normalizeDocumentationPath } from "../url"
-import type { AppleDocJSON } from "./types"
+import { getRandomUserAgent, NotFoundError } from "../fetch.js"
+import { normalizeDocumentationPath } from "../url.js"
+import type { AppleDocJSON } from "./types.js"
 
 /**
  * Fetch Apple Developer reference documentation JSON data for a given path

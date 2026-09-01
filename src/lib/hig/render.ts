@@ -12,9 +12,9 @@ import {
   MAX_CONTENT_DEPTH,
   MAX_INLINE_DEPTH,
   mapAsideStyleToCallout,
-} from "../markdown"
-import type { ContentItem, TextFragment } from "../types"
-import { extractTitleFromIdentifier } from "../url"
+} from "../markdown.js"
+import type { ContentItem, TextFragment } from "../types.js"
+import { extractTitleFromIdentifier } from "../url.js"
 import type {
   HIGExternalReference,
   HIGImageReference,
@@ -23,8 +23,8 @@ import type {
   HIGTableOfContents,
   HIGTocItem,
   HIGTopicSection,
-} from "./types"
-import { isHIGImageReference } from "./util"
+} from "./types.js"
+import { isHIGImageReference } from "./util.js"
 
 // ============================================================================
 // RENDERING FUNCTIONS

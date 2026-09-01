@@ -3,6 +3,6 @@
  * Re-exports all reference documentation related functions and types
  */
 
-export * from "./fetch"
-export * from "./render"
-export type * from "./types"
+export * from "./fetch.js"
+export * from "./render.js"
+export type * from "./types.js"

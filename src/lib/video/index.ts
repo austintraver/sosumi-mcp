@@ -1,4 +1,4 @@
-import { getRandomUserAgent } from "../fetch"
+import { getRandomUserAgent } from "../fetch.js"
 
 export class TranscriptNotFoundError extends Error {}
 

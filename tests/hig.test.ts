@@ -130,12 +130,8 @@ describe("HIG Module", () => {
         .fn()
         .mockResolvedValue(new Response("Internal Server Error", { status: 500 }))
 
-      await expect(fetchHIGTableOfContents()).rejects.toThrow(
-        "Failed to fetch HIG ToC: 500 Internal Server Error",
-      )
-      await expect(fetchHIGPageData("test")).rejects.toThrow(
-        "Failed to fetch HIG page: 500 Internal Server Error",
-      )
+      await expect(fetchHIGTableOfContents()).rejects.toThrow("Failed to fetch HIG ToC: 500")
+      await expect(fetchHIGPageData("test")).rejects.toThrow("Failed to fetch HIG page: 500")
     })
 
     it("should normalize path by removing leading/trailing slashes", async () => {

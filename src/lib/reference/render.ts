@@ -12,8 +12,8 @@ import {
   MAX_CONTENT_DEPTH,
   MAX_INLINE_DEPTH,
   mapAsideStyleToCallout,
-} from "../markdown"
-import { extractTitleFromIdentifier } from "../url"
+} from "../markdown.js"
+import { extractTitleFromIdentifier } from "../url.js"
 import type {
   AppleDocJSON,
   ContentItem,
@@ -24,7 +24,7 @@ import type {
   PropertyItem,
   TopicSection,
   Variant,
-} from "./types"
+} from "./types.js"
 
 interface RenderOptions {
   externalOrigin?: string

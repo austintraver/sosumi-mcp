@@ -1,7 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { searchAppleDeveloperDocs } from "../src/lib/search"
 
-const SEARCH_URL = "https://devintserv.msc.sbz.apple.com/api/v1/search"
+const SEARCH_URL = "https://devintserv.msc.sbz.apple.com/api/v1/query"
+
+const arrayMetadata = {
+  title: "Array",
+  permalink: "https://developer.apple.com/documentation/swift/array",
+  description: "An ordered, random-access collection.",
+  hierarchy: "Swift > Array",
+  kind: "symbol",
+  metadataKind: "documentation",
+}
+
+function jsonl(...events: unknown[]): string {
+  return events
+    .map((event) => (typeof event === "string" ? event : JSON.stringify(event)))
+    .join("\n")
+}
+
+function jsonlResponse(events: string): Response {
+  return new Response(events, {
+    status: 200,
+    headers: { "Content-Type": "application/jsonl" },
+  })
+}
 
 describe("searchAppleDeveloperDocs", () => {
   const originalFetch = global.fetch
@@ -15,16 +37,19 @@ describe("searchAppleDeveloperDocs", () => {
     global.fetch = originalFetch
   })
 
-  it("parses the JSON response from Apple's MSC search backend", async () => {
-    const payload = {
+  it("parses current JSONL events, retains the full result order, and normalizes every supported result shape", async () => {
+    const incompleteSnapshot = JSON.stringify({
+      results: [{ value: { metadata: arrayMetadata, origin: "documentation" } }],
+    })
+    const fullSnapshot = JSON.stringify({
       results: [
+        { value: { metadata: arrayMetadata, origin: "documentation" } },
         {
           documentation: {
             metadata: {
               title: "SchemaMigrationPlan",
               permalink: "https://developer.apple.com/documentation/swiftdata/schemamigrationplan",
-              description:
-                "An interface for describing the evolution of a schema and how to migrate between specific versions.",
+              description: "Describe schema evolution and migration.",
               hierarchy: "SwiftData > SchemaMigrationPlan",
               kind: "symbol",
             },
@@ -35,7 +60,7 @@ describe("searchAppleDeveloperDocs", () => {
             metadata: {
               titles: ["Model your schema with SwiftData"],
               permalinks: ["https://developer.apple.com/videos/play/wwdc2023/10195"],
-              descriptions: ["Learn how to use schema macros and migration plans with SwiftData."],
+              descriptions: ["Learn schema macros and migration plans."],
               projectNames: ["WWDC23"],
               itemTypes: ["Video"],
               deliveryLanguageCodes: ["eng"],
@@ -47,30 +72,44 @@ describe("searchAppleDeveloperDocs", () => {
             metadata: {
               title: "Get Started - SwiftUI",
               sourceURL: "https://developer.apple.com/swiftui/get-started/",
-              description: "SwiftUI provides everything you need to begin designing.",
+              description: "Start designing with SwiftUI.",
             },
           },
         },
         {
           swiftdocs: {
             metadata: {
-              title: "Swift.org - The Swift Programming Language",
+              title: "The Swift Programming Language",
               sourceURL: "https://www.swift.org/documentation/",
-              description: "Documentation for the Swift programming language.",
+              description: "Swift language documentation.",
             },
           },
         },
       ],
-    }
+    })
 
     global.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(payload), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+      jsonlResponse(
+        jsonl(
+          "",
+          {
+            kind: "quickSearch",
+            response: { results: [{ metadata: arrayMetadata, origin: "documentation" }] },
+          },
+          { kind: "quickSearchFinished" },
+          "this is not JSON",
+          { kind: "unrelated", response: { results: [] } },
+          { kind: "search", diff: { append: incompleteSnapshot, removeLast: 0 } },
+          {
+            kind: "search",
+            diff: { append: fullSnapshot, removeLast: incompleteSnapshot.length },
+          },
+          { kind: "searchFinished" },
+        ),
+      ),
     )
 
-    const result = await searchAppleDeveloperDocs("SchemaMigrationPlan")
+    const result = await searchAppleDeveloperDocs("Swift Array")
 
     expect(global.fetch).toHaveBeenCalledTimes(1)
     const [requestUrl, requestInit] = vi.mocked(global.fetch).mock.calls[0] ?? []
@@ -80,7 +119,7 @@ describe("searchAppleDeveloperDocs", () => {
         method: "POST",
         headers: expect.objectContaining({
           "Content-Type": "application/json",
-          Accept: "application/json",
+          Accept: "application/jsonl",
           Origin: "https://developer.apple.com",
           Referer: "https://developer.apple.com/search/",
           "User-Agent": expect.stringMatching(/AppleWebKit/),
@@ -88,18 +127,26 @@ describe("searchAppleDeveloperDocs", () => {
       }),
     )
     expect(JSON.parse(String(requestInit?.body))).toEqual({
-      text: "SchemaMigrationPlan",
+      text: "Swift Array",
       targetResultLocale: expect.any(String),
+      includedResponses: ["quickSearch", "search"],
     })
 
     expect(result).toEqual({
-      query: "SchemaMigrationPlan",
+      query: "Swift Array",
       results: [
+        {
+          title: "Array",
+          url: "https://developer.apple.com/documentation/swift/array",
+          description: "An ordered, random-access collection.",
+          breadcrumbs: ["Swift", "Array"],
+          tags: ["symbol"],
+          type: "documentation",
+        },
         {
           title: "SchemaMigrationPlan",
           url: "https://developer.apple.com/documentation/swiftdata/schemamigrationplan",
-          description:
-            "An interface for describing the evolution of a schema and how to migrate between specific versions.",
+          description: "Describe schema evolution and migration.",
           breadcrumbs: ["SwiftData", "SchemaMigrationPlan"],
           tags: ["symbol"],
           type: "documentation",
@@ -107,7 +154,7 @@ describe("searchAppleDeveloperDocs", () => {
         {
           title: "Model your schema with SwiftData",
           url: "https://developer.apple.com/videos/play/wwdc2023/10195",
-          description: "Learn how to use schema macros and migration plans with SwiftData.",
+          description: "Learn schema macros and migration plans.",
           breadcrumbs: ["WWDC23"],
           tags: ["Video", "eng"],
           type: "video",
@@ -115,20 +162,69 @@ describe("searchAppleDeveloperDocs", () => {
         {
           title: "Get Started - SwiftUI",
           url: "https://developer.apple.com/swiftui/get-started/",
-          description: "SwiftUI provides everything you need to begin designing.",
+          description: "Start designing with SwiftUI.",
           breadcrumbs: [],
           tags: [],
           type: "general",
         },
         {
-          title: "Swift.org - The Swift Programming Language",
+          title: "The Swift Programming Language",
           url: "https://www.swift.org/documentation/",
-          description: "Documentation for the Swift programming language.",
+          description: "Swift language documentation.",
           breadcrumbs: [],
           tags: [],
           type: "general",
         },
       ],
+    })
+  })
+
+  it("keeps valid quick-search results when JSONL lines or full-search snapshots are malformed", async () => {
+    global.fetch = vi.fn().mockResolvedValue(
+      jsonlResponse(
+        jsonl(
+          {
+            kind: "quickSearch",
+            response: { results: [{ metadata: arrayMetadata, origin: "documentation" }] },
+          },
+          "",
+          "{ malformed",
+          { kind: "search", diff: { append: "{bad snapshot", removeLast: 0 } },
+          { kind: "error", response: "searchFailed" },
+        ),
+      ),
+    )
+
+    await expect(searchAppleDeveloperDocs("Swift Array")).resolves.toEqual({
+      query: "Swift Array",
+      results: [
+        {
+          title: "Array",
+          url: "https://developer.apple.com/documentation/swift/array",
+          description: "An ordered, random-access collection.",
+          breadcrumbs: ["Swift", "Array"],
+          tags: ["symbol"],
+          type: "documentation",
+        },
+      ],
+    })
+  })
+
+  it("uses quick search when full search has no valid result", async () => {
+    global.fetch = vi.fn().mockResolvedValue(
+      jsonlResponse(
+        jsonl(
+          {
+            kind: "quickSearch",
+            response: { results: [{ metadata: arrayMetadata, origin: "documentation" }] },
+          },
+          { kind: "search", response: { results: [{ ignored: true }] } },
+        ),
+      ),
+    )
+
+    await expect(searchAppleDeveloperDocs("Swift Array")).resolves.toMatchObject({
+      results: [{ title: "Array" }],
     })
   })
 
@@ -139,13 +235,7 @@ describe("searchAppleDeveloperDocs", () => {
           resolvedOptions: () => ({ locale: "en-US-u-hc-h23" }),
         }) as Intl.DateTimeFormat,
     )
-
-    global.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ results: [] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    )
+    global.fetch = vi.fn().mockResolvedValue(jsonlResponse(""))
 
     await searchAppleDeveloperDocs("SchemaMigrationPlan")
 
@@ -153,6 +243,7 @@ describe("searchAppleDeveloperDocs", () => {
     expect(JSON.parse(String(requestInit?.body))).toEqual({
       text: "SchemaMigrationPlan",
       targetResultLocale: "en",
+      includedResponses: ["quickSearch", "search"],
     })
   })
 
@@ -163,13 +254,7 @@ describe("searchAppleDeveloperDocs", () => {
           resolvedOptions: () => ({ locale: "ja-JP" }),
         }) as Intl.DateTimeFormat,
     )
-
-    global.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ results: [] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    )
+    global.fetch = vi.fn().mockResolvedValue(jsonlResponse(""))
 
     await searchAppleDeveloperDocs("Foundation")
 
@@ -177,6 +262,7 @@ describe("searchAppleDeveloperDocs", () => {
     expect(JSON.parse(String(requestInit?.body))).toEqual({
       text: "Foundation",
       targetResultLocale: "ja-JP",
+      includedResponses: ["quickSearch", "search"],
     })
   })
 
@@ -187,13 +273,7 @@ describe("searchAppleDeveloperDocs", () => {
           resolvedOptions: () => ({ locale: "es-419" }),
         }) as Intl.DateTimeFormat,
     )
-
-    global.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ results: [] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    )
+    global.fetch = vi.fn().mockResolvedValue(jsonlResponse(""))
 
     await searchAppleDeveloperDocs("Foundation")
 
@@ -201,37 +281,15 @@ describe("searchAppleDeveloperDocs", () => {
     expect(JSON.parse(String(requestInit?.body))).toEqual({
       text: "Foundation",
       targetResultLocale: "es-lamr",
+      includedResponses: ["quickSearch", "search"],
     })
   })
 
-  it("returns an empty result set when Apple search returns no matches", async () => {
-    global.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ results: [] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    )
+  it("returns an empty result set for an otherwise valid JSONL response with no result events", async () => {
+    global.fetch = vi.fn().mockResolvedValue(jsonlResponse(jsonl({ kind: "searchFinished" })))
 
-    const result = await searchAppleDeveloperDocs("no-such-symbol")
-
-    expect(result).toEqual({
+    await expect(searchAppleDeveloperDocs("no-such-symbol")).resolves.toEqual({
       query: "no-such-symbol",
-      results: [],
-    })
-  })
-
-  it("returns an empty result set when the response omits the results array", async () => {
-    global.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ featuredResults: [] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    )
-
-    const result = await searchAppleDeveloperDocs("ambiguous-shape")
-
-    expect(result).toEqual({
-      query: "ambiguous-shape",
       results: [],
     })
   })
@@ -245,18 +303,5 @@ describe("searchAppleDeveloperDocs", () => {
     )
 
     await expect(searchAppleDeveloperDocs("anything")).rejects.toThrow("Search request failed: 500")
-  })
-
-  it("throws a clear error when Apple's backend returns malformed JSON", async () => {
-    global.fetch = vi.fn().mockResolvedValue(
-      new Response("not json", {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    )
-
-    await expect(searchAppleDeveloperDocs("anything")).rejects.toThrow(
-      "Search response was not valid JSON",
-    )
   })
 })

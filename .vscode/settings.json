@@ -3,8 +3,5 @@
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
         "source.organizeImports.biome": "explicit"
-    },
-    "files.associations": {
-        "llms.txt": "markdown"
     }
 }

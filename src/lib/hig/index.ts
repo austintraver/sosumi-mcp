@@ -3,7 +3,7 @@
  * Re-exports all HIG-related functions and types
  */
 
-export * from "./fetch"
-export * from "./render"
-export type * from "./types"
-export { hasChildren, isHIGImageReference, isHIGTopicReference } from "./util"
+export * from "./fetch.js"
+export * from "./render.js"
+export type * from "./types.js"
+export { hasChildren, isHIGImageReference, isHIGTopicReference } from "./util.js"

@@ -2,8 +2,8 @@
  * Human Interface Guidelines (HIG) fetching functionality
  */
 
-import { getRandomUserAgent, NotFoundError } from "../fetch"
-import type { HIGPageJSON, HIGTableOfContents } from "./types"
+import { getRandomUserAgent, NotFoundError } from "../fetch.js"
+import type { HIGPageJSON, HIGTableOfContents } from "./types.js"
 
 // ============================================================================
 // CONSTANTS

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const toolHandlers = new Map<string, (input: unknown) => Promise<unknown>>()
+const fetchHIGTableOfContents = vi.fn()
+const renderHIGTableOfContents = vi.fn()
 const fetchVideoTranscriptMarkdown = vi.fn()
 const searchAppleDeveloperDocs = vi.fn()
 
@@ -24,6 +26,13 @@ vi.mock("../src/lib/video", () => ({
   fetchVideoTranscriptMarkdown,
 }))
 
+vi.mock("../src/lib/hig", () => ({
+  fetchHIGTableOfContents,
+  renderHIGTableOfContents,
+  fetchHIGPageData: vi.fn(),
+  renderHIGFromJSON: vi.fn(),
+}))
+
 vi.mock("../src/lib/search", () => ({
   searchAppleDeveloperDocs,
 }))
@@ -31,6 +40,8 @@ vi.mock("../src/lib/search", () => ({
 describe("MCP tools registration", () => {
   beforeEach(() => {
     toolHandlers.clear()
+    fetchHIGTableOfContents.mockReset()
+    renderHIGTableOfContents.mockReset()
     fetchVideoTranscriptMarkdown.mockReset()
     searchAppleDeveloperDocs.mockReset()
   })
@@ -124,5 +135,23 @@ describe("MCP tools registration", () => {
     expect(result.content[0].text).toContain("Found 1 result(s)")
     expect(result.structuredContent.query).toBe("SchemaMigrationPlan")
     expect(result.structuredContent.results[0]?.title).toBe("SchemaMigrationPlan")
+  })
+
+  it("fetches the HIG root as the table of contents", async () => {
+    const tableOfContents = { interfaceLanguages: { swift: [] } }
+    fetchHIGTableOfContents.mockResolvedValue(tableOfContents)
+    renderHIGTableOfContents.mockReturnValue(`# Human Interface Guidelines\n\n${"A".repeat(150)}`)
+
+    const { createMcpServer } = await import("../src/lib/mcp")
+    createMcpServer()
+
+    const handler = toolHandlers.get("fetchAppleDocumentation")
+    const result = (await handler?.({
+      path: "/design/human-interface-guidelines",
+    })) as { content: Array<{ text: string }> }
+
+    expect(fetchHIGTableOfContents).toHaveBeenCalledOnce()
+    expect(renderHIGTableOfContents).toHaveBeenCalledWith(tableOfContents)
+    expect(result.content[0].text).toContain("# Human Interface Guidelines")
   })
 })

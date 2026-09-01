@@ -1,76 +1,45 @@
 {
-  "name": "@nshipster/sosumi",
+  "name": "sosumi-mcp",
   "version": "1.0.6",
-  "description": "Making Apple docs AI-readable",
+  "description": "A local stdio MCP server that renders Apple documentation as Markdown",
   "license": "MIT",
-  "author": "NSHipster",
+  "author": "NSHipster and Austin Traver",
   "repository": {
     "type": "git",
-    "url": "https://github.com/NSHipster/sosumi.ai"
+    "url": "https://github.com/austintraver/sosumi-mcp.git"
   },
-  "keywords": [
-    "apple",
-    "docs",
-    "documentation",
-    "mcp",
-    "cli",
-    "markdown",
-    "swift-docc",
-    "ai"
-  ],
-  "preferGlobal": true,
-  "homepage": "https://sosumi.ai",
-  "bugs": {
-    "url": "https://github.com/NSHipster/sosumi.ai/issues"
-  },
+  "packageManager": "pnpm@11.21.0",
   "type": "module",
   "engines": {
     "node": ">=20.18.1"
   },
-  "files": [
-    "bin",
-    "src",
-    "public",
-    "wrangler.jsonc",
-    "README.md",
-    "LICENSE.md"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
-  "bin": {
-    "sosumi": "bin/sosumi.mjs"
-  },
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy --minify",
-    "cli": "node ./bin/sosumi.mjs",
-    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
-    "test": "vitest",
-    "test:ui": "vitest --ui",
-    "test:run": "vitest run",
+    "build": "pnpm run typecheck && node scripts/build-stdio-bundle.mjs",
+    "dev": "tsx src/stdio.ts",
+    "pack:mcpb": "pnpm run build && pnpm run stage:mcpb && mcpb validate artifacts/stage && mcpb pack artifacts/stage artifacts/sosumi-mcp-1.0.6.mcpb",
+    "start": "pnpm run build && node dist/stdio.js",
+    "stage:mcpb": "node scripts/stage-mcpb.mjs",
+    "verify:mcpb": "node scripts/verify-mcpb.mjs artifacts/sosumi-mcp-1.0.6.mcpb",
+    "typecheck": "tsc --noEmit --project tsconfig.build.json",
+    "test": "vitest run",
+    "test:search:live": "SOSUMI_LIVE_SEARCH=1 vitest run tests/search.live.test.ts",
+    "test:watch": "vitest",
     "format": "biome check --write --linter-enabled=false .",
     "lint": "biome check --formatter-enabled=false .",
     "check": "biome check --write .",
     "check:ci": "biome check ."
   },
   "dependencies": {
-    "@hono/mcp": "^0.1.2",
-    "@modelcontextprotocol/sdk": "^1.17.4",
-    "cheerio": "^1.2.0",
-    "hono": "^4.9.4",
-    "robots-parser": "^3.0.1",
-    "tsx": "^4.21.0",
-    "web-bot-auth": "^0.1.3",
-    "zod": "^3",
-    "zod-to-json-schema": "^3.25.2"
+    "@modelcontextprotocol/sdk": "1.27.1",
+    "zod": "3.25.76"
   },
   "devDependencies": {
+    "@anthropic-ai/mcpb": "2.1.2",
     "@biomejs/biome": "2.2.2",
-    "@cloudflare/puppeteer": "^1.0.4",
-    "@cloudflare/vitest-pool-workers": "^0.12.18",
-    "@vitest/ui": "^3.2.4",
-    "vitest": "^3.2.4",
-    "wrangler": "^4.32.0"
+    "@types/node": "22.18.12",
+    "esbuild": "0.28.2",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
   }
 }

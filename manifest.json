@@ -1,0 +1,51 @@
+{
+  "manifest_version": "0.3",
+  "name": "sosumi-mcp",
+  "display_name": "Sosumi MCP",
+  "version": "1.0.6",
+  "description": "A local stdio MCP server that renders public Apple Developer documentation as Markdown.",
+  "author": {
+    "name": "Austin Traver"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/austintraver/sosumi-mcp.git"
+  },
+  "homepage": "https://github.com/austintraver/sosumi-mcp",
+  "documentation": "https://github.com/austintraver/sosumi-mcp/blob/main/README.md",
+  "support": "https://github.com/austintraver/sosumi-mcp/issues",
+  "server": {
+    "type": "node",
+    "entry_point": "server/stdio.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/stdio.js"]
+    }
+  },
+  "tools": [
+    {
+      "name": "searchAppleDocumentation",
+      "description": "Search Apple Developer documentation."
+    },
+    {
+      "name": "fetchAppleDocumentation",
+      "description": "Render Apple Developer documentation and Human Interface Guidelines as Markdown."
+    },
+    {
+      "name": "fetchAppleVideoTranscript",
+      "description": "Render a public Apple Developer video transcript as Markdown."
+    },
+    {
+      "name": "fetchExternalDocumentation",
+      "description": "Render an external Swift-DocC page as Markdown."
+    }
+  ],
+  "keywords": ["apple", "documentation", "mcp", "visionos", "xcode"],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": ["darwin"],
+    "runtimes": {
+      "node": ">=20.18.1"
+    }
+  }
+}

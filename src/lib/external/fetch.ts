@@ -1,22 +1,14 @@
-import { renderFromJSON } from "../reference"
-import type { AppleDocJSON } from "../types"
-import { webBotAuthHeaders } from "../webbotauth"
-import {
-  assertExternalDocumentationAccess,
-  ExternalAccessError,
-  validateExternalDocumentationUrl,
-} from "./policy"
-import type { ExternalPolicyEnv, RobotsPolicyResult } from "./types"
+import { renderFromJSON } from "../reference/index.js"
+import type { AppleDocJSON } from "../types.js"
 
-const RESTRICTIVE_X_ROBOTS_TAGS = ["none", "noindex", "noai", "noimageai"] as const
+export class ExternalDocumentationUrlError extends Error {}
 
 export function extractExternalDocumentationBasePath(sourceUrl: URL): string {
   const normalizedPath = sourceUrl.pathname.replace(/\/+$/, "")
   const match = normalizedPath.match(/^(.*?)(\/documentation(?:\/.*)?)$/)
   if (!match) {
-    throw new ExternalAccessError(
+    throw new ExternalDocumentationUrlError(
       "External URL must point to a Swift-DocC documentation path.",
-      400,
     )
   }
 
@@ -32,35 +24,15 @@ export function buildExternalDocCJsonUrl(sourceUrl: URL): URL {
   return new URL(`${hostBasePath}/data${jsonPath}`, sourceUrl.origin)
 }
 
-export async function fetchExternalDocCJSON(
-  sourceUrl: URL,
-  externalPolicyEnv: ExternalPolicyEnv = {},
-): Promise<AppleDocJSON> {
-  const validatedUrl = validateExternalDocumentationUrl(sourceUrl.toString())
-  await assertExternalDocumentationAccess(validatedUrl, externalPolicyEnv)
-  const jsonUrl = buildExternalDocCJsonUrl(validatedUrl)
+export async function fetchExternalDocCJSON(sourceUrl: URL): Promise<AppleDocJSON> {
+  const jsonUrl = buildExternalDocCJsonUrl(sourceUrl)
   const response = await fetch(jsonUrl.toString(), {
-    headers: {
-      "User-Agent": EXTERNAL_DOC_USER_AGENT,
-      Accept: "application/json",
-      ...(await webBotAuthHeaders("GET", jsonUrl)),
-    },
+    headers: { Accept: "application/json" },
   })
-
-  const xRobotsTag = response.headers.get("x-robots-tag")
-  if (containsRestrictiveXRobotsTag(xRobotsTag)) {
-    throw new ExternalAccessError(
-      "External host denied AI/doc access via X-Robots-Tag response header.",
-      403,
-    )
-  }
 
   if (!response.ok) {
     if (response.status === 404) {
-      throw new ExternalAccessError(
-        `External documentation page not found at ${jsonUrl.toString()}`,
-        404,
-      )
+      throw new Error(`External documentation page not found at ${jsonUrl.toString()}`)
     }
 
     throw new Error(`Failed to fetch external DocC JSON: ${response.status} ${response.statusText}`)
@@ -69,68 +41,17 @@ export async function fetchExternalDocCJSON(
   return (await response.json()) as AppleDocJSON
 }
 
-export async function fetchExternalDocumentationMarkdown(
-  url: string,
-  externalPolicyEnv: ExternalPolicyEnv = {},
-): Promise<string> {
-  const targetUrl = validateExternalDocumentationUrl(url)
-  const jsonData = await fetchExternalDocCJSON(targetUrl, externalPolicyEnv)
+export async function fetchExternalDocumentationMarkdown(url: string): Promise<string> {
+  let targetUrl: URL
+  try {
+    targetUrl = new URL(url)
+  } catch {
+    throw new ExternalDocumentationUrlError("Invalid external URL.")
+  }
+
+  const jsonData = await fetchExternalDocCJSON(targetUrl)
   const externalBasePath = extractExternalDocumentationBasePath(targetUrl)
   return renderFromJSON(jsonData, targetUrl.toString(), {
     externalOrigin: `${targetUrl.origin}${externalBasePath}`,
   })
 }
-
-export async function fetchRobotsPolicy(
-  origin: string,
-  userAgent: string,
-): Promise<RobotsPolicyResult> {
-  const robotsUrl = new URL("/robots.txt", origin)
-  const response = await fetch(robotsUrl.toString(), {
-    headers: {
-      "User-Agent": userAgent,
-      Accept: "text/plain, text/*;q=0.9, */*;q=0.1",
-      ...(await webBotAuthHeaders("GET", robotsUrl)),
-    },
-  })
-
-  // Missing or inaccessible robots.txt — caller may try root domain or allow.
-  if (response.status === 404 || response.status === 410 || response.status === 403) {
-    return { kind: "not-found" }
-  }
-
-  // Explicit access denial when robots cannot be read due to auth.
-  if (response.status === 401) {
-    return { kind: "deny-all" }
-  }
-
-  // Fail open for transient server/network issues.
-  if (!response.ok) {
-    return { kind: "allow-all" }
-  }
-
-  const robotsText = await response.text()
-  return { kind: "rules", robotsText }
-}
-
-function containsRestrictiveXRobotsTag(headerValue: string | null): boolean {
-  if (!headerValue) {
-    return false
-  }
-
-  const tokenSet = new Set(
-    headerValue
-      .toLowerCase()
-      .split(",")
-      .map((token) => token.trim())
-      .filter(Boolean),
-  )
-
-  for (const token of RESTRICTIVE_X_ROBOTS_TAGS) {
-    if (tokenSet.has(token)) {
-      return true
-    }
-  }
-  return false
-}
-export const EXTERNAL_DOC_USER_AGENT = "sosumi-ai/1.0 (+https://sosumi.ai/#bot)"

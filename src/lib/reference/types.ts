@@ -29,4 +29,4 @@ export type {
   TextFragment,
   TopicSection,
   Variant,
-} from "../types"
+} from "../types.js"
